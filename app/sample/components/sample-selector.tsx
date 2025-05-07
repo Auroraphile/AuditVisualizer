@@ -1,8 +1,10 @@
 import React, { useState } from "react";
 import Image from "next/image";
 import useMultiWinnerDataStore from "../../../store/multi-winner-data";
-import { AvatarColor } from "@/utils/avatar-color";
-import { explainAssertions } from "../../explain-assertions/components/explain-process";
+import {
+  explainAssertions,
+  validateInputData,
+} from "../../explain-assertions/components/explain-process";
 import { useRouter } from "next/navigation";
 import {
   Dialog,
@@ -13,6 +15,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { useFileDataStore } from "@/store/fileData";
 
 type SampleFile = {
   name: string;
@@ -47,7 +50,6 @@ const sampleFiles: SampleFile[] = [
 
 const SampleSelector = () => {
   const {
-    setMultiWinner,
     setCandidateList,
     setAssertionList,
     setWinnerInfo,
@@ -57,7 +59,6 @@ const SampleSelector = () => {
     clearWinnerInfo,
   } = useMultiWinnerDataStore(); // 使用全局状态
 
-  const avatarColor = new AvatarColor();
   const router = useRouter();
   const [isConfirming, setIsConfirming] = useState(false);
   const [selectedSample, setSelectedSample] = useState<SampleFile | null>(null);
@@ -84,26 +85,24 @@ const SampleSelector = () => {
         const result = e.target?.result;
 
         if (typeof result === "string") {
+          useFileDataStore.setState({ fileData: result });
           // 解析文件内容并调用核心库进行校验和解析
-          const response = explainAssertions(result);
+          const response = validateInputData(result);
           console.log("response", response);
           if (response.success) {
-            // 成功解析，将数据存储到全局状态中
-            setMultiWinner(response.data);
+            // 成功解析并校验，将数据存储到全局状态中
+            // setMultiWinner(response.data);
             const jsonData = JSON.parse(result);
-
-            // 处理候选人列表
             const candidateList = jsonData.metadata.candidates.map(
               (name: string, index: number) => ({
                 id: index,
                 name: name,
-                color: avatarColor.getColor(index),
               }),
             );
-            console.log("candidateList", candidateList);
+
             setCandidateList(candidateList);
 
-            // 将候选人列表转换为字典，便于后续查找
+            // 将候选人列表转换为字典，以便更快地查找名字
             const candidateMap = candidateList.reduce(
               (
                 acc: { [key: number]: string },
@@ -115,8 +114,10 @@ const SampleSelector = () => {
               {} as { [key: number]: string },
             );
 
-            // 提取 assertions 并生成 assertionList
+            // 从 jsonData 中提取 assertions
             const assertions = jsonData.solution.Ok.assertions;
+
+            // 根据 assertions 生成 assertionList
             const assertionList = assertions.map(
               (
                 assertionObj: {
@@ -160,17 +161,14 @@ const SampleSelector = () => {
                 };
               },
             );
-            console.log("assertionList", assertionList);
             setAssertionList(assertionList);
-            console.log(
-              "Successfully processed and stored the sample file data",
-            );
 
             const winnerId = jsonData.solution.Ok.winner;
             const winnerName = jsonData.metadata.candidates[winnerId];
             setWinnerInfo({ id: winnerId, name: winnerName });
           } else {
-            console.error("Failed to explain assertions", response.error);
+            // 处理错误情况
+            console.error("Error:", response);
           }
         }
       };
